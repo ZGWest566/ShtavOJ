@@ -4,7 +4,7 @@
 // ============================================================
 
 // JSONBlob URL — 在 jsonblob.com 创建空 JSON 后替换
-const BLOB_URL = 'https://jsonblob.com/api/jsonBlob/你的ID';
+const BLOB_URL = 'https://jsonblob.com/01a08b71-c319-71e9-abb3-30b9497b23af/json';
 
 // CORS 代理 — 用来转发 Wandbox 请求
 // 备选：'https://api.allorigins.win/raw?url='
