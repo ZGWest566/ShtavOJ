@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>题目详情 - 赤石 OJ</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="index.html" class="brand">
+        Shtav<span>OJ</span>
+    </a>
+    <div class="nav-links">
+        <a href="index.html">首页</a>
+        <a href="rank.html">排名</a>
+        <span id="current-user"></span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="main-layout">
+
+        <!-- 左侧：题目描述 -->
+        <div class="main-content">
+            <div class="card" id="problem-card">
+                <div class="loading">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 右侧：提交区 + 提交记录 -->
+        <div class="sidebar">
+            <!-- 提交区 -->
+            <div class="card">
+                <h2 class="card-title">提交代码</h2>
+                <div id="submit-area">
+                    <div class="editor-toolbar">
+                        <select id="lang-select">
+                            <option value="cpp">C++ (GCC 13.2)</option>
+                            <option value="c">C (GCC 13.2)</option>
+                            <option value="python">Python 3.12</option>
+                            <option value="java">Java 21</option>
+                            <option value="node">Node.js 20</option>
+                            <option value="rust">Rust 1.75</option>
+                        </select>
+                    </div>
+                    <div class="code-editor-wrapper">
+                        <textarea id="code-editor" placeholder="// 在这里写代码..." spellcheck="false"></textarea>
+                    </div>
+                    <button id="submit-btn" class="btn btn-primary btn-block" onclick="handleSubmit()">
+                        提交评测
+                    </button>
+                    <div id="submit-status" style="margin-top:12px;text-align:center;font-size:0.85rem;"></div>
+                </div>
+            </div>
+
+            <!-- 提交记录 -->
+            <div class="card">
+                <h2 class="card-title">提交记录</h2>
+                <div id="submissions-list">
+                    <div class="empty">暂无提交</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="footer">
+    赤石 <span>OJ</span> — 提交后请耐心等待评测，Wandbox 有时候会抽风
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/user.js"></script>
+<script src="js/rank.js"></script>
+<script src="js/thread.js"></script>
+<script src="js/wandbox.js"></script>
+<script src="js/judge.js"></script>
+
+<script>
+// ============================================================
+//  题目详情页
+// ============================================================
+
+let currentProblemId = null;
+let pollingTimer = null;
+
+function getProblemId() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('id');
+}
+
+async function initProblem() {
+    updateUserDisplay();
+    currentProblemId = getProblemId();
+
+    if (!currentProblemId) {
+        document.getElementById('problem-card').innerHTML = '<div class="error">未指定题目ID</div>';
+        return;
+    }
+
+    document.title = '#' + currentProblemId + ' - 赤石 OJ';
+
+    try {
+        const data = await readBlob();
+        ensureBlobStructure(data);
+
+        const problem = data.problems[currentProblemId];
+        if (!problem) {
+            document.getElementById('problem-card').innerHTML = '<div class="error">题目不存在</div>';
+            return;
+        }
+
+        renderProblem(problem);
+        renderSubmissions(data.submissions, currentProblemId);
+    } catch (e) {
+        console.error('加载失败:', e);
+        document.getElementById('problem-card').innerHTML = '<div class="error">加载失败：' + e.message + '</div>';
+    }
+}
+
+function renderProblem(problem) {
+    const card = document.getElementById('problem-card');
+
+    // 简单 Markdown 转 HTML
+    const html = simpleMarkdown(problem.statement || '');
+
+    card.innerHTML = `
+        <h1 style="color:var(--accent);margin-bottom:12px;">#${escapeHtml(problem.id)} ${escapeHtml(problem.title)}</h1>
+        <div class="problem-info">
+            <span>⏱ ${problem.timeLimitMs || 1000}ms</span>
+            <span>💾 ${problem.memoryLimitMb || 256}MB</span>
+            <span>📋 ${problem.testcases ? problem.testcases.length : 0} 个测试点</span>
+        </div>
+        <div class="problem-statement">${html}</div>
+    `;
+}
+
+function renderSubmissions(submissions, problemId) {
+    const container = document.getElementById('submissions-list');
+    const user = getCurrentUser();
+
+    const filtered = submissions
+        .filter(s => s.problemId === problemId)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 30);
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty">暂无提交</div>';
+        return;
+    }
+
+    container.innerHTML = filtered.map(s => {
+        const vClass = 'verdict-' + (s.verdict || s.status || 'pending').toLowerCase();
+        const vText = s.verdict || (s.status === 'judging' ? '评测中' : '等待中');
+        const detail = s.passed !== undefined ? ` (${s.passed}/${s.total})` : '';
+        return `
+            <div class="submission-item">
+                <span class="submission-user">${escapeHtml(s.user)}</span>
+                <span class="submission-lang" style="color:var(--text-dim);font-size:0.8rem;">${s.language || '?'}</span>
+                <span style="flex:1;"></span>
+                <span class="verdict-badge ${vClass}">${vText}${detail}</span>
+                <span style="color:var(--text-dim);font-size:0.75rem;">${formatTime(s.createdAt)}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+async function handleSubmit() {
+    const user = getCurrentUser();
+    if (!user) {
+        showLoginModal();
+        return;
+    }
+
+    const code = document.getElementById('code-editor').value.trim();
+    if (!code) {
+        document.getElementById('submit-status').innerHTML = '<span style="color:var(--red);">代码不能为空</span>';
+        return;
+    }
+
+    const language = document.getElementById('lang-select').value;
+    const btn = document.getElementById('submit-btn');
+    const status = document.getElementById('submit-status');
+
+    btn.disabled = true;
+    btn.textContent = '提交中...';
+    status.innerHTML = '<span style="color:var(--accent);">正在提交...</span>';
+
+    try {
+        const subId = 'sub_' + Date.now();
+
+        await safeUpdate(blob => {
+            ensureBlobStructure(blob);
+            blob.submissions.push({
+                id: subId,
+                user,
+                problemId: currentProblemId,
+                language,
+                code,
+                status: 'pending',
+                verdict: null,
+                createdAt: Date.now()
+            });
+        });
+
+        status.innerHTML = '<span style="color:var(--accent);">提交成功，开始评测...</span>';
+
+        // 开始评测
+        judgeSubmission(subId).then(result => {
+            if (result) {
+                const vClass = 'verdict-' + (result.verdict || 'se').toLowerCase();
+                const detail = result.passed !== undefined ? ` (${result.passed}/${result.total})` : '';
+                status.innerHTML = `<span class="verdict-badge ${vClass}">${result.verdict}${detail}</span>`;
+                if (result.message && result.verdict === 'CE') {
+                    status.innerHTML += `<pre style="margin-top:8px;background:#0d1117;padding:8px;border-radius:4px;font-size:0.8rem;max-height:200px;overflow:auto;white-space:pre-wrap;">${escapeHtml(result.message)}</pre>`;
+                }
+            }
+            refreshSubmissions();
+        }).catch(e => {
+            status.innerHTML = '<span style="color:var(--red);">评测失败：' + e.message + '</span>';
+        });
+
+        refreshSubmissions();
+    } catch (e) {
+        status.innerHTML = '<span style="color:var(--red);">提交失败：' + e.message + '</span>';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '提交评测';
+    }
+}
+
+async function refreshSubmissions() {
+    try {
+        const data = await readBlob();
+        ensureBlobStructure(data);
+        renderSubmissions(data.submissions, currentProblemId);
+    } catch (e) {
+        // 静默失败
+    }
+}
+
+// 简易 Markdown 渲染
+function simpleMarkdown(text) {
+    if (!text) return '';
+    let html = text;
+
+    // 代码块
+    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+        return `<pre><code>${escapeHtml(code)}</code></pre>`;
+    });
+
+    // 行内代码
+    html = html.replace(/`([^`]+)`/g, '<code style="background:#0d1117;padding:2px 6px;border-radius:3px;font-size:0.85em;">$1</code>');
+
+    // 标题
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+
+    // 粗体
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // 行内数学 $...$
+    html = html.replace(/\$([^$]+)\$/g, '<em>$1</em>');
+
+    // 换行
+    html = html.replace(/\n\n/g, '</p><p>');
+    html = html.replace(/\n/g, '<br>');
+
+    return '<p>' + html + '</p>';
+}
+
+initProblem();
+</script>
+
+</body>
+</html>

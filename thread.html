@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>帖子 - 赤石 OJ</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="index.html" class="brand">Shtav<span>OJ</span></a>
+    <div class="nav-links">
+        <a href="index.html">首页</a>
+        <a href="rank.html">排名</a>
+        <span id="current-user"></span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="card">
+        <h2 id="thread-title-display" style="color:var(--accent);margin-bottom:16px;">加载中...</h2>
+        <div id="thread-detail">
+            <div class="loading">加载中...</div>
+        </div>
+        <div class="reply-form">
+            <textarea id="reply-content" placeholder="写回复..." rows="3"></textarea>
+            <button class="btn btn-primary btn-sm" onclick="handleReply()">回复</button>
+        </div>
+    </div>
+
+    <div style="margin-top:16px;">
+        <a href="index.html" class="btn btn-sm">← 返回首页</a>
+    </div>
+</div>
+
+<div class="footer">
+    赤石 <span>OJ</span> — 讨论区，你的发言会被所有人看到，注意素质
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/user.js"></script>
+<script src="js/thread.js"></script>
+
+<script>
+let currentThreadId = null;
+
+function getThreadId() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('id');
+}
+
+async function initThread() {
+    updateUserDisplay();
+    currentThreadId = getThreadId();
+
+    if (!currentThreadId) {
+        document.getElementById('thread-detail').innerHTML = '<div class="error">未指定帖子ID</div>';
+        return;
+    }
+
+    try {
+        const data = await readBlob();
+        ensureBlobStructure(data);
+        const thread = data.threads.find(t => t.id === currentThreadId);
+        if (!thread) {
+            document.getElementById('thread-detail').innerHTML = '<div class="error">帖子不存在</div>';
+            return;
+        }
+        renderThreadDetail(thread);
+    } catch (e) {
+        document.getElementById('thread-detail').innerHTML = '<div class="error">加载失败：' + e.message + '</div>';
+    }
+}
+
+async function handleReply() {
+    const user = getCurrentUser();
+    if (!user) { showLoginModal(); return; }
+
+    const content = document.getElementById('reply-content').value.trim();
+    if (!content) return;
+
+    try {
+        await replyThread(currentThreadId, content);
+        document.getElementById('reply-content').value = '';
+        const data = await readBlob();
+        ensureBlobStructure(data);
+        const thread = data.threads.find(t => t.id === currentThreadId);
+        if (thread) renderThreadDetail(thread);
+    } catch (e) {
+        alert('回复失败：' + e.message);
+    }
+}
+
+initThread();
+</script>
+
+</body>
+</html>

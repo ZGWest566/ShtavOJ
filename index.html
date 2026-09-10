@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>赤石 OJ</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- 导航栏 -->
+<nav class="navbar">
+    <a href="index.html" class="brand">
+        Shtav<span>OJ</span>
+    </a>
+    <div class="nav-links">
+        <a href="index.html" class="active">首页</a>
+        <a href="rank.html">排名</a>
+        <a href="https://github.com" target="_blank">GitHub</a>
+        <span id="current-user"></span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="main-layout">
+
+        <!-- 左侧：题目列表 + 讨论区 -->
+        <div class="main-content">
+
+            <!-- 题目列表 -->
+            <div class="card">
+                <div class="section-header">
+                    <h2 class="card-title">题目列表</h2>
+                    <button class="btn btn-primary btn-sm" onclick="addSampleProblems()">添加示例题目</button>
+                </div>
+                <div id="problem-list" class="problem-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 讨论区 -->
+            <div class="card">
+                <div class="section-header">
+                    <h2 class="card-title">讨论区</h2>
+                    <button class="btn btn-primary btn-sm" onclick="showNewThreadModal()">发帖</button>
+                </div>
+                <div id="threads-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 右侧：排名 -->
+        <div class="sidebar">
+            <div class="card">
+                <h2 class="card-title">排名</h2>
+                <div id="ranking-list">
+                    <div class="loading">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 关于 -->
+            <div class="card">
+                <h2 class="card-title">关于</h2>
+                <p style="font-size:0.85rem;color:var(--text-dim);line-height:1.8;">
+                    数据库是 JSONBlob，评测机是 Wandbox，没有后端，没有服务器，没有安全。
+                    <br><br>
+                    它能跑，至于为什么能跑，不要问。
+                </p>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="footer">
+    赤石 <span>OJ</span> — 零后端在线评测系统 · 所有数据均为公开共享
+</div>
+
+<!-- 新帖子弹窗 -->
+<div id="new-thread-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+        <h2>发帖</h2>
+        <input id="new-thread-title" type="text" placeholder="标题" maxlength="200">
+        <textarea id="new-thread-content" placeholder="内容" rows="4"
+            style="width:100%;background:#0d1117;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:inherit;resize:vertical;margin-bottom:12px;"></textarea>
+        <div class="modal-actions">
+            <button class="btn btn-sm" onclick="document.getElementById('new-thread-modal').style.display='none'">取消</button>
+            <button class="btn btn-primary btn-sm" onclick="handleNewThread()">发布</button>
+        </div>
+    </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/user.js"></script>
+<script src="js/rank.js"></script>
+<script src="js/thread.js"></script>
+<script src="js/wandbox.js"></script>
+<script src="js/judge.js"></script>
+
+<script>
+// ============================================================
+//  首页初始化
+// ============================================================
+
+async function initIndex() {
+    updateUserDisplay();
+
+    try {
+        const data = await readBlob();
+        ensureBlobStructure(data);
+
+        renderProblemList(data.problems, data.submissions);
+        renderRanking(calculateRanking(data.submissions));
+        renderThreads(data.threads);
+    } catch (e) {
+        console.error('加载失败:', e);
+        document.getElementById('problem-list').innerHTML = '<div class="error">加载失败：' + e.message + '</div>';
+        document.getElementById('ranking-list').innerHTML = '<div class="error">加载失败</div>';
+        document.getElementById('threads-list').innerHTML = '<div class="error">加载失败</div>';
+    }
+}
+
+function renderProblemList(problems, submissions) {
+    const container = document.getElementById('problem-list');
+    const list = Object.values(problems);
+
+    if (list.length === 0) {
+        container.innerHTML = '<div class="empty">暂无题目，点击右上角添加示例题目</div>';
+        return;
+    }
+
+    const user = getCurrentUser();
+    const acSet = new Set();
+    const triedSet = new Set();
+    if (user) {
+        for (const s of submissions) {
+            if (s.user === user) {
+                triedSet.add(s.problemId);
+                if (s.verdict === 'AC') acSet.add(s.problemId);
+            }
+        }
+    }
+
+    container.innerHTML = list
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map(p => {
+            let statusClass = 'status-none';
+            let statusText = '—';
+            if (acSet.has(p.id)) {
+                statusClass = 'status-ac';
+                statusText = 'AC';
+            } else if (triedSet.has(p.id)) {
+                statusClass = 'status-wa';
+                statusText = 'WA';
+            }
+            return `
+                <a href="problem.html?id=${p.id}" class="problem-item">
+                    <span class="problem-id">#${escapeHtml(p.id)}</span>
+                    <span class="problem-title">${escapeHtml(p.title)}</span>
+                    <span class="problem-status ${statusClass}">${statusText}</span>
+                </a>
+            `;
+        }).join('');
+}
+
+async function addSampleProblems() {
+    const user = getCurrentUser();
+    if (!user) {
+        showLoginModal();
+        return;
+    }
+
+    try {
+        await safeUpdate(blob => {
+            ensureBlobStructure(blob);
+            if (!blob.problems['1000']) {
+                blob.problems['1000'] = {
+                    id: '1000',
+                    title: 'A+B Problem',
+                    statement: '## 题目描述\n\n输入两个整数 $a$ 和 $b$，输出它们的和 $a+b$。\n\n## 输入格式\n\n一行，两个整数 $a$ 和 $b$，以空格分隔。\n\n## 输出格式\n\n一行，一个整数 $a+b$。\n\n## 样例\n\n### 输入\n```\n1 2\n```\n\n### 输出\n```\n3\n```\n\n## 数据范围\n\n$-10^9 \\le a, b \\le 10^9$',
+                    timeLimitMs: 1000,
+                    memoryLimitMb: 256,
+                    testcases: [
+                        { input: '1 2\n', expected: '3\n' },
+                        { input: '100 200\n', expected: '300\n' },
+                        { input: '-5 5\n', expected: '0\n' },
+                    ]
+                };
+            }
+            if (!blob.problems['1001']) {
+                blob.problems['1001'] = {
+                    id: '1001',
+                    title: 'Hello World',
+                    statement: '## 题目描述\n\n输出 "Hello, World!"（不含引号）。\n\n## 输入格式\n\n无输入。\n\n## 输出格式\n\n一行，字符串 "Hello, World!"。\n\n## 样例\n\n### 输入\n```\n\n```\n\n### 输出\n```\nHello, World!\n```',
+                    timeLimitMs: 1000,
+                    memoryLimitMb: 256,
+                    testcases: [
+                        { input: '', expected: 'Hello, World!\n' },
+                    ]
+                };
+            }
+        });
+        alert('示例题目已添加，刷新查看');
+        window.location.reload();
+    } catch (e) {
+        alert('添加失败：' + e.message);
+    }
+}
+
+function showNewThreadModal() {
+    const user = getCurrentUser();
+    if (!user) { showLoginModal(); return; }
+    document.getElementById('new-thread-modal').style.display = 'flex';
+    document.getElementById('new-thread-title').focus();
+}
+
+async function handleNewThread() {
+    const title = document.getElementById('new-thread-title').value.trim();
+    const content = document.getElementById('new-thread-content').value.trim();
+    if (!title || !content) return;
+
+    try {
+        await createThread(title, content);
+        document.getElementById('new-thread-modal').style.display = 'none';
+        document.getElementById('new-thread-title').value = '';
+        document.getElementById('new-thread-content').value = '';
+        const data = await readBlob();
+        ensureBlobStructure(data);
+        renderThreads(data.threads);
+    } catch (e) {
+        alert('发帖失败：' + e.message);
+    }
+}
+
+// 关闭弹窗
+document.addEventListener('click', e => {
+    const modal = document.getElementById('new-thread-modal');
+    if (e.target === modal) {
+        modal.style.display = 'none';
+    }
+});
+
+initIndex();
+</script>
+
+</body>
+</html>

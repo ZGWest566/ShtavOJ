@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排名 - 赤石 OJ</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="index.html" class="brand">Shtav<span>OJ</span></a>
+    <div class="nav-links">
+        <a href="index.html">首页</a>
+        <a href="rank.html" class="active">排名</a>
+        <span id="current-user"></span>
+    </div>
+</nav>
+
+<div class="container">
+    <div class="card">
+        <h2 class="card-title">解题排名</h2>
+        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:16px;">
+            按 AC 题目数排名，相同数量按首次 AC 时间排序（暂未实现时间排序，能跑就行）。
+        </p>
+        <div id="ranking-list">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    赤石 <span>OJ</span> — 排名仅供参考，数据可能随时丢失
+</div>
+
+<script src="js/config.js"></script>
+<script src="js/db.js"></script>
+<script src="js/user.js"></script>
+<script src="js/rank.js"></script>
+<script src="js/thread.js"></script>
+
+<script>
+async function initRank() {
+    updateUserDisplay();
+    try {
+        const data = await readBlob();
+        ensureBlobStructure(data);
+        renderRanking(calculateRanking(data.submissions));
+    } catch (e) {
+        document.getElementById('ranking-list').innerHTML = '<div class="error">加载失败：' + e.message + '</div>';
+    }
+}
+initRank();
+</script>
+
+</body>
+</html>
