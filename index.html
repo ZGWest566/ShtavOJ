@@ -27,6 +27,18 @@
         <!-- 左侧：题目列表 + 讨论区 -->
         <div class="main-content">
 
+            <!-- 初始化数据库 -->
+            <div id="init-banner" class="card" style="display:none;border-color:var(--yellow);text-align:center;">
+                <h2 style="color:var(--yellow);margin-bottom:8px;">⚠ 数据库未初始化</h2>
+                <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;">
+                    JSONBlob 是空的，需要先写入初始数据才能使用。
+                </p>
+                <button id="init-btn" class="btn btn-primary" onclick="handleInitBlob()">
+                    初始化数据库
+                </button>
+                <div id="init-status" style="margin-top:12px;font-size:0.85rem;"></div>
+            </div>
+
             <!-- 题目列表 -->
             <div class="card">
                 <div class="section-header">
@@ -117,9 +129,29 @@ async function initIndex() {
         renderThreads(data.threads);
     } catch (e) {
         console.error('加载失败:', e);
+        document.getElementById('init-banner').style.display = 'block';
+        document.getElementById('init-status').innerHTML = '<span style="color:var(--red);">错误：' + e.message + '</span>';
         document.getElementById('problem-list').innerHTML = '<div class="error">加载失败：' + e.message + '</div>';
         document.getElementById('ranking-list').innerHTML = '<div class="error">加载失败</div>';
         document.getElementById('threads-list').innerHTML = '<div class="error">加载失败</div>';
+    }
+}
+
+async function handleInitBlob() {
+    const btn = document.getElementById('init-btn');
+    const status = document.getElementById('init-status');
+    btn.disabled = true;
+    btn.textContent = '初始化中...';
+    status.innerHTML = '<span style="color:var(--accent);">正在写入 JSONBlob...</span>';
+
+    try {
+        await initBlob();
+        status.innerHTML = '<span style="color:var(--green);">✓ 初始化成功！刷新页面...</span>';
+        setTimeout(() => window.location.reload(), 1000);
+    } catch (e) {
+        status.innerHTML = '<span style="color:var(--red);">✗ ' + e.message + '</span>';
+        btn.disabled = false;
+        btn.textContent = '重试初始化';
     }
 }
 
